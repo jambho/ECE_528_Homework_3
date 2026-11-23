@@ -41,7 +41,6 @@ _What is the purpose of the UCAxSTATW status register in the UART module? Which 
 
 _Assume that the eUSCI_A3 module is using SMCLK as its clock source, which has a frequency of 12 MHz. Calculate the value that is needed to be written to the UCAxBRW register to configure the eUSCI_A3 module for 115200 baud._
 
-**Work:**
 
 ```
 N = f_BRCLK / Baud Rate = 12,000,000 / 115,200 = 104.1667
@@ -49,7 +48,7 @@ N = f_BRCLK / Baud Rate = 12,000,000 / 115,200 = 104.1667
 UCOS16 = 0 (low-frequency baud rate mode)
 UCA3BRW = INT(N) = 104 = 0x0068
 
-Actual baud = 12,000,000 / 104 = 115,384.6 baud  (error ≈ +0.16 %)
+Actual baud = 12,000,000 / 104 = 115,384.6 baud  (error = +0.16 %)
 ```
 
 **Answer:** `UCA3BRW = 104 (0x0068)` with UCOS16 = 0 and the modulation fields in UCA3MCTLW cleared.
@@ -114,19 +113,11 @@ void UART2_Init(void)
 }
 ```
 
-_Note: The MSP432P401R datasheet maps P3.2 = UCA2RXD and P3.3 = UCA2TXD. The bitmask `0x0C` selects both pins, so the code is the same either way._
-
 #### (b) (10 pts)
 
 _Draw the waveform for the UART TX data line if the main program is transmitting two bytes: 0xF1 followed by 0x55. Clearly label the start bits, data bits, and stop bits. Assume that there is a 50 ms delay between the two bytes._
 
 ![UART TX waveform](images/q4b_uart_waveform.png)
-
-_Notes:_
-- The line idles HIGH. Each frame is: start bit (0), 8 data bits sent MSB first (D7 to D0), no parity, and one stop bit (1). That is 10 bits per frame.
-- Bit time = 1 / 115200 ≈ 8.68 µs, so each frame lasts ≈ 86.8 µs. During the 50 ms delay the line stays HIGH (idle). The gap is not drawn to scale.
-- `0xF1` = `1111 0001` → frame: `0 | 1 1 1 1 0 0 0 1 | 1`
-- `0x55` = `0101 0101` → frame: `0 | 0 1 0 1 0 1 0 1 | 1`
 
 
 ---
@@ -135,7 +126,7 @@ _Notes:_
 
 _What is the function of the eUSCI_B module? How does SPI communication differ from UART communication in terms of:_
 
-**Function of eUSCI_B:** The eUSCI_B (enhanced Universal Serial Communication Interface, type B) is a serial peripheral that supports **SPI** (3-pin or 4-pin, controller or peripheral) and **I²C** modes. The MSP432 uses it to talk to synchronous peripherals such as displays, sensors, memory, and ADC/DAC chips. It handles the shift registers, bit-clock generation (UCBxBRW), and TX/RX buffers and interrupt flags. Unlike eUSCI_A, it has no UART mode.
+**Function of eUSCI_B:** The eUSCI_B is a serial peripheral that supports **SPI** (3-pin or 4-pin, controller or peripheral) and **I²C** modes. The MSP432 uses it to talk to synchronous peripherals such as displays, sensors, memory, and ADC/DAC chips. It handles the shift registers, bit-clock generation (UCBxBRW), and TX/RX buffers and interrupt flags. Unlike eUSCI_A, it has no UART mode.
 
 | Aspect | SPI | UART |
 |--------|-----|------|
@@ -154,7 +145,7 @@ _Explain the role of the following SPI signals:_
 
 | Signal | Role |
 |--------|------|
-| SCLK | Serial clock, generated only by the controller. Each clock cycle shifts one bit in both directions. CPOL/CPHA (UCCKPL/UCCKPH) set its idle level and which edge captures data versus which edge changes it. |
+| SCLK | Serial clock that is generated only by the controller. Each clock cycle shifts one bit in both directions. CPOL/CPHA (UCCKPL/UCCKPH) set its idle level and which edge captures data versus which edge changes it. |
 | CS | Chip Select (usually active low, also called STE/SS). It is driven by the controller to pick which peripheral takes part in the transfer. When CS is deasserted (HIGH), the peripheral ignores SCLK/MOSI and tri-states its MISO output. CS also marks the start and end of a transaction. |
 | MISO | Controller In, Peripheral Out (UCBxSOMI). It carries data from the selected peripheral to the controller. Only the selected peripheral drives it. |
 | MOSI | Controller Out, Peripheral In (UCBxSIMO). It carries data from the controller to the peripheral(s). It is shifted out of UCBxTXBUF MSB or LSB first. |
@@ -163,7 +154,7 @@ _Explain the role of the following SPI signals:_
 
 _What happens if multiple SPI peripheral devices have their CS line asserted simultaneously on the MSP432?_
 
-All selected peripherals see the same SCLK and MOSI data, so each one accepts the same command or data. That can cause unwanted writes or configuration changes. Worse, **every selected peripheral drives MISO at the same time**. That causes bus contention: outputs push-pull against each other, the logic levels become undefined, and the MSP432 reads corrupted data. The large currents can also damage the output drivers. The eUSCI_B has no arbitration in SPI mode and does not detect this. Firmware must drive the CS GPIOs so that **only one CS is active at a time**. (The exception is a daisy-chain design, where devices are wired in series so that only one MISO reaches the controller, or write-only peripherals that do not drive MISO.)
+All selected peripherals see the same SCLK and MOSI data, so each one accepts the same command or data. That can cause unwanted writes or configuration changes. Also, every selected peripheral drives MISO at the same time. That causes bus contention; outputs push-pull against each other, the logic levels become undefined, and the MSP432 reads corrupted data. The large currents can also damage the output drivers. The eUSCI_B has no arbitration in SPI mode and does not detect this. Firmware must drive the CS GPIOs so that only one CS is active at a time.
 
 ---
 
@@ -250,20 +241,9 @@ _Write a function named EUSCI_B0_SPI_Init that configures the eUSCI_B0 module fo
 void EUSCI_B0_SPI_Init(void)
 {
     // Hold the eUSCI_B0 module in reset while it is being configured
-    EUSCI_B0->CTLW0 |= 0x0001;              // UCSWRST = 1
+    EUSCI_B0->CTLW0 |= 0x0001;     
 
     // Configure UCB0CTLW0
-    // bit 15    UCCKPH  = 1  data captured on first edge, changed on next (Mode 0)
-    // bit 14    UCCKPL  = 0  clock idles LOW (Mode 0)
-    // bit 13    UCMSB   = 1  MSB first
-    // bit 12    UC7BIT  = 0  8-bit data
-    // bit 11    UCMST   = 1  controller (master) mode
-    // bits 10-9 UCMODEx = 00 3-pin SPI
-    // bit 8     UCSYNC  = 1  synchronous mode
-    // bits 7-6  UCSSELx = 10 SMCLK as BRCLK
-    // bits 5-2  reserved = 0
-    // bit 1     UCSTEM  = 0  (STE unused in 3-pin mode)
-    // bit 0     UCSWRST = 1  stay in reset
     EUSCI_B0->CTLW0 = 0xA981;
 
     // SPI clock: f_BitClock = f_BRCLK / UCBRx = 12 MHz / 12 = 1 MHz
@@ -273,16 +253,16 @@ void EUSCI_B0_SPI_Init(void)
     P1->SEL0 |= 0xE0;
     P1->SEL1 &= ~0xE0;
 
-    // P9.0 = GPIO output used as active-low chip select, start deasserted (HIGH)
+    // P9.0 = GPIO output used as active-low chip select
     P9->SEL0 &= ~0x01;
     P9->SEL1 &= ~0x01;
     P9->OUT  |= 0x01;
     P9->DIR  |= 0x01;
 
     // Release the module from reset
-    EUSCI_B0->CTLW0 &= ~0x0001;             // UCSWRST = 0
+    EUSCI_B0->CTLW0 &= ~0x0001;       
 
-    // Disable interrupts (UCTXIE, UCRXIE); polling is used
+    // Disable interrupts
     EUSCI_B0->IE &= ~0x0003;
 }
 ```
@@ -293,11 +273,7 @@ _If a main program transmits one byte with a value of 0x57, draw the waveforms f
 
 ![SPI waveform for 0x57](images/q8b_spi_waveform.png)
 
-_Notes:_
-- `0x57` = `0101 0111`, sent MSB first: D7..D0 = `0 1 0 1 0 1 1 1`.
-- SPI Mode 0 (CPOL = 0, CPHA = 0): SCLK idles LOW. MOSI holds D7 before the first rising edge. The peripheral samples MOSI on each **rising** edge, and the MSP432 changes MOSI on each **falling** edge.
-- SCLK = 1 MHz, so each bit takes 1 µs and the byte takes 8 µs (8 clock pulses).
-- CS (P9.0) is pulled LOW by software before the byte is written to UCB0TXBUF. It goes back HIGH after UCBUSY clears (transfer complete).
+
 
 
 ---
